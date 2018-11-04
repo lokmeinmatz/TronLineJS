@@ -16,6 +16,7 @@ function init() {
 }
 
 let myName = ''
+let myColor = '#ffffff'
 function connectToServer(nickname) {
   socket.emit('join', nickname)
   infoP.innerText = 'Waiting for server response...'
@@ -26,6 +27,7 @@ function connectToServer(nickname) {
       infoP.innerText = 'Joining successful'
       document.getElementById('login').remove()
       myName = nickname
+      myColor = res.color
       setupGame()
     }
     else {
@@ -59,10 +61,13 @@ let gameState = {title : 'Not connected'}
 
 socket.on('gameState', gState => {
   console.log('Received new gameState')
-  if(gState.title) {
+  if(gState) {
     gameState = gState
     if(gState.type == 'Play') {
+      console.log('Started game')
       me = new ClientPlayer(myName, createVector(gState.startPos.x, gState.startPos.y), gState.startDir)
+      me.color = myColor
+      players = []
     }
   }
 })
@@ -86,10 +91,14 @@ class ClientPlayer {
     this.pos = pos
     this.dir = dir
     this.path = []
+    this.color = '#ffffff'
     this.plottedPath = createGraphics(getFieldSize(), getFieldSize())
+    this.alive = true
   }
 
   move() {
+    if(!this.alive) return
+    console.log('movin')
     if(keyIsDown(65)) this.dir -= 0.02 // a
     if(keyIsDown(68)) this.dir += 0.02 // d
 
@@ -105,6 +114,7 @@ class ClientPlayer {
     let walkVec = createVector(cos(me.dir), sin(me.dir)).mult(0.2)
     this.addPathElement({x: this.pos.x, y: this.pos.y})
     this.pos.add(walkVec)
+
   } 
 
 
@@ -112,7 +122,7 @@ class ClientPlayer {
     this.path.push(p)
     //Draw to plottedPath
     if(this.path.length < 2) return //no plotting
-    this.plottedPath.stroke(255, 200, 100)
+    this.plottedPath.stroke(this.color)
     const lastPointMapped = mapRelToScreen(this.path[this.path.length - 2])
     const newPointMapped = mapRelToScreen(p)
 
@@ -121,14 +131,13 @@ class ClientPlayer {
 
   draw(showName) {
 
+    //TODO change color based on alive / dead
 
-    noFill()
-    stroke(255, 100, 0)
     //Draw plotted path
     image(this.plottedPath, 0, 0) //TODO x and y valable center
 
     noStroke()
-    fill(255) //TODO individual color
+    fill(this.color) 
     //Draw relative (0 - 100) => every palyer sees same screen
     let screenPos = mapRelToScreen(this.pos)
     ellipse(screenPos.x, screenPos.y, 10, 10)
@@ -157,14 +166,25 @@ socket.on('gameTick', tickData => {
   if(myName == 'deb'){
     debugger
   }
+  if(frameCount % 100 == 0)console.log(tickData)
   for(let tickPlayer of tickData.players) {
-    if(tickPlayer.name == me.name) continue
+    if(tickPlayer.name == me.name) {
+      //check if dead
+      if(!tickPlayer.alive) {
+        me.alive = false
+      }
+      continue
+    }
 
     //find player
     let localPlayer = players.find(e => e.name == tickPlayer.name)
     if(localPlayer == undefined || localPlayer == null) {
       //Create new one
       localPlayer = new ClientPlayer(tickPlayer.name, tickPlayer.pos, tickPlayer.dir)
+
+      //get player color from play-gamestate
+      localPlayer.color = gameState.colors[tickPlayer.name]
+
       players.push(localPlayer)
     }
 
@@ -210,10 +230,10 @@ function draw() {
     }
   }
   else if(gameState.type == 'Play') {
+    textAlign(LEFT)
     text('as: ' + me.name, 0.5*width + 50, 30)
     //game logic
     //Draw me
-    textAlign(LEFT)
     me.move()
 
     me.draw(true)
@@ -225,6 +245,19 @@ function draw() {
 
 
     //send tickupdate to server
-    socket.emit('playerTick', {pos: {x: me.pos.x, y: me.pos.y}, dir: me.dir, tickID: frameCount})
+    if(me.alive) {
+      socket.emit('playerTick', {pos: {x: me.pos.x, y: me.pos.y}, dir: me.dir, tickID: frameCount})
+    }
+  }
+
+  else if(gameState.type == 'GameOver') {
+    textSize(35)
+    text('WINNER: ' + gameState.winner, width * 0.5, 100)
+    textSize(20)
+    text('Game will restart soon...' , width * 0.5, 130)
   }
 }
+
+
+
+

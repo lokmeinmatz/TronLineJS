@@ -1,10 +1,12 @@
 class Player {
-  constructor(nickname, socket) {
+  constructor(nickname, socket, color) {
     this.nickname = nickname
     this.socket = socket
     this.pos = {x: 0, y:0}
     this.path = []
     this.dir = Math.random() * Math.PI * 2
+    this.color = color
+    this.alive = true
   }
 
   update(tickData) {
